@@ -192,16 +192,17 @@ These are research directions, not implemented Node V1 features.
 
 This public release is intentionally limited to engineering documentation and physical-development evidence; manuscript files are maintained separately.
 
-## Researcher
+## Project Developer
 
 **Md. Habibur Rahman Habib**  
+**Undergraduate Student & Research Assistant**  
 Department of Electrical and Electronic Engineering  
 School of Engineering, Technology and Sciences  
 Independent University, Bangladesh  
 Dhaka, Bangladesh  
-Email: 2312190@iub.edu.bd
+Email: 2312190@iub.edu.bd  
 
-**Developer and researcher — CPS Node V1**
+**Project Developer — CPS Node V1**
 
 ## Publication Status
 
