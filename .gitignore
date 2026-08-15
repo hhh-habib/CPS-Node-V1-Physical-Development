@@ -1,0 +1,19 @@
+# LaTeX / generated files
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Temporary files
+tmp/
+*.tmp
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.vscode/
