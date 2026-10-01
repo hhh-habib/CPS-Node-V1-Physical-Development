@@ -1,119 +1,55 @@
-# Communication Architecture
+# Communication architecture - Stage 5A standalone
 
-## System role
+Node V1 is a fixed environmental endpoint. Wi-Fi exposes its local dashboard and telemetry; nRF24 monitors compatible PIKU peer evidence. Firmware/API details belong to the [frozen software release](SOFTWARE_RELEASE_REFERENCE.md).
 
-Node V1 is an embedded application-layer endpoint in a bidirectional Wi-Fi communication system. It is simultaneously an information-source encoder/server and a remote-command receiver/physical actuator controller.
+![Current communication architecture](../figures/communication_diagram.png)
 
-```text
-INFORMATION SOURCES
-  DHT22 | MQ-2 | Flame | Directional HC-SR04
-                         |
-                         v
-ACQUISITION / DIGITALIZATION
-  Digital sensor protocol | ADC | GPIO | echo timing
-                         |
-                         v
-ESP32-S3 PROCESSING
-  filtering | validity | freshness | safety | radar association
-                         |
-                         v
-DIGITAL TELEMETRY
-  node ID | sequence | timestamp | structured JSON | metrics
-                         |
-                         v
-EMBEDDED HTTP COMMUNICATION SERVER
-                         |
-                         v
-WI-FI WIRELESS CHANNEL (AP or STA path)
-                         |
-                         v
-REMOTE BROWSER RECEIVER / DASHBOARD
-```
+*Sensors -> ESP32-S3 safety/telemetry -> TFT and browser. PIKU heartbeat/status -> Node V1 peer monitoring, with RF hardware auto-ACK at the link layer.*
 
-Reverse direction:
+Diagram screen values and labels are illustrative. Use the live TFT for addresses and the software API authority for exact state/field names; the centralized alarm API state is NORMAL or ALARM.
 
-```text
-REMOTE DASHBOARD COMMAND
-  mode | start/pause | left/front/right | measure
-                         |
-                         v
-HTTP POST + APPLICATION ACK
-                         |
-                         v
-WI-FI CHANNEL
-                         |
-                         v
-ESP32-S3 COMMAND RECEIVER / QUEUE
-                         |
-                         v
-RADAR STATE MACHINE + LEDC SERVO GENERATOR
-                         |
-                         v
-PHYSICAL ACTION: SG90 DIRECTIONAL SENSOR HEAD
-```
+## Sensors to Node V1
 
-## Layer boundary
+DHT22 temperature/humidity, MQ-2 analog data and digital flame status enter `SensorManager`. `SafetyManager` owns alarm evaluation; telemetry, TFT and dashboard present that shared state. MQ-2 values are raw/filtered ADC, not ppm. Validity and age information accompany observations.
 
-### Firmware/application responsibilities
+## TFT
 
-- Acquire, filter, validate, timestamp, and package sensor data.
-- Assign node identity and monotonically increasing telemetry sequence.
-- Serve the embedded SPA and JSON API.
-- Parse, validate, count, queue, and acknowledge commands.
-- Report application telemetry age/rate, frames served, Command Accept RTT, node apply latency, Command Applied RTT, command state, and API errors.
-- Report Wi-Fi API observations exposed by the ESP32 stack: RSSI, channel, IP, and association state.
-- Maintain AP+STA recovery and persistent credentials.
+The 1.8-inch ST7735S cycles normal telemetry and network pages. Alarm presentation takes priority over both. It shows the actual connected STA SSID and current STA IP, separate SoftAP SSID/IP, and local/peer radio state. During STA loss it marks the STA address unavailable; recovery displays the current IP rather than an old router address.
 
-### Wi-Fi/lower-layer responsibilities
+## Wi-Fi and browser access
 
-- 802.11 modulation, coding, framing, retransmission, channel access, and PHY/MAC error handling.
-- RF transport between ESP32-S3 and browser/access point.
-- IP, TCP, and link-layer delivery below the application server.
+| Path | Identity/address | Use |
+|---|---|---|
+| SoftAP | `IUB-IRCPS`, `192.168.10.1` | Direct local dashboard and provisioning access |
+| STA | Actual connected SSID, current DHCP IP shown on TFT | Dashboard access from the same router network |
+| Optional STA mDNS | `node-v1.local` when active and supported by the client network | Alternate local browser address |
 
-The firmware does not derive BER, SNR, RF packet loss, or PHY throughput. Sequence intervals not rendered by the browser are labelled **skipped telemetry intervals (browser)**, not packet loss. The link test reports HTTP request round-trip time and failed application requests.
+Open the root dashboard using the TFT-displayed STA address, or join the node's SoftAP with owner-provided provisioning information and open `http://192.168.10.1/`. Both interfaces serve the same embedded dashboard: Overview, Environment, Communication and System. Assets are local and need no internet service. SoftAP remains available during STA connection/loss/recovery.
 
-## AP+STA topology
+A submitted Wi-Fi configuration is a temporary **candidate**. It becomes **last known good (LKG)** only after continuous usable association/IP confirmation and a successful checked storage write. Candidate failure restores the previous LKG when available; without LKG, SoftAP remains the provisioning path. Disconnect retains LKG and suppresses retries; Forget attempts to erase saved configuration. These are source-defined policies, not measured reconnection guarantees. See the [frozen communication document](https://github.com/hhh-habib/CPS-Node-V1-Software-Development/blob/70ef949ce18ab81cbc207fed13bcc320d8b99964/docs/COMMUNICATION_ARCHITECTURE.md) for exact conditions and errors.
 
-```text
-                         +-------------------------------+
-Phone/Laptop <---Wi-Fi-->| Soft AP: node_v1              |
-direct recovery/control  | IP: normally 192.168.4.1      |
-                         |                               |
-Home AP <-------Wi-Fi--->| STA: saved credentials in NVS |<---LAN---> Browser
-                         | IP: DHCP                      |
-                         +-------------------------------+
-                                      ESP32-S3
-```
+The prototype serves plaintext local HTTP without application authentication/TLS. It is not a secured public deployment. Provisioning information is supplied separately by the owner.
 
-The ESP32 stays in `WIFI_AP_STA`. A failed STA association does not remove the local AP path. On a successful STA association it also attempts `node-v1.local` mDNS service publication.
+## nRF peer monitoring
 
-## Runtime data ownership
+The nRF24L01+ PA+LNA uses the regulated adapter and shared SPI described in [hardware architecture](HARDWARE_ARCHITECTURE.md). PIKU heartbeat/status packets provide recognized peer evidence.
 
-- `SensorManager` owns environmental samples and their validity/freshness timestamps.
-- `RadarManager` owns servo direction, current beam angle, latest measurement angle/range, and recent detections. Current `angle` and latest `sample_angle` are intentionally distinct while sweeping.
-- `SafetyManager` alone converts sensor truth into alarm causes.
-- `NetworkManager` owns Wi-Fi credentials and connection/link state.
-- `TelemetryManager` produces the sequenced transmission representation.
-- `CommunicationManager` owns API counters, command acceptance, and acknowledgements.
-- Browser JavaScript renders node truth; it does not duplicate safety thresholds.
+| State | Meaning |
+|---|---|
+| Local READY | Node V1 radio hardware initialized/configured and listener started |
+| Local ERROR | Local hardware/configuration unavailable; recovery is paced |
+| Peer UNSEEN | No recognized PIKU peer evidence yet |
+| Peer ONLINE | Initialized local radio and fresh recognized PIKU heartbeat/status evidence |
+| Peer STALE | Previously seen evidence expired or local radio became unavailable |
 
-## Timing
+READY does not prove ONLINE. The source's peer freshness window is 5 s, a policy constant rather than RF latency. Initialization/health failures enter bounded, nonfatal recovery so sensing, safety, TFT, Wi-Fi and HTTP continue getting loop turns. This software behavior does not repair broken wires or guarantee survival of electrical damage.
 
-| Activity | Nominal timing |
-|---|---:|
-| Browser telemetry polling | 250 ms, with one request in flight at a time |
-| Node telemetry sequence update | 250 ms (4 Hz) |
-| Fast environment inputs | 100 ms |
-| DHT22 read | 2500 ms |
-| Radar servo step | 1 degree / 25 ms |
-| Radar sample spacing | >= 70 ms and about 4 degrees |
-| Manual servo settle | 250 ms |
-| HC-SR04 echo timeout | 25 ms |
-| TFT update eligibility | 400 ms |
-| Radar-dot retention | 3500 ms |
+The standalone loop listens and does not periodically send application heartbeats or application-level robot drive commands. **RF hardware auto-ACK is link-layer behavior**, distinct from an application heartbeat, acknowledgement packet or robot control. Owner-reported mutual peer visibility must not be reinterpreted as an implemented Node V1 application transmit path.
 
-All schedules are rollover-safe unsigned elapsed-time comparisons. HC-SR04 trigger/echo and servo generation are non-blocking with respect to HTTP servicing.
+The owner reports Node V1 seeing PIKU ONLINE, PIKU seeing Node V1 online, and automatic reacquisition after PIKU reboot. Two defective nRF jumper wires on PIKU caused the initial link failure; replacement restored communication. See [physical validation](STAGE5A_PHYSICAL_VALIDATION.md).
 
-## Extensibility
+## Retired historical and future interfaces
 
-The schema starts with `node_id`, and transport, telemetry, acquisition, radar, and safety are separate components. Reserved GPIOs remain unused for future STM32, I2C, camera, audio, or multi-node CPS work. None of those future modules is implemented in this version.
+The former radar/head-control API, including `/api/command`, is **retired historical behavior**. No current Radar view or directional command path remains.
+
+**Future Stage 5B:** coordinator integration and application robot driving, followed by the combined CPS dashboard. The future `/cps` route is absent from standalone Stage 5A. Robot 2 integration is future work; no Robot 2 nRF link is claimed. See the current/future platform context in the [README](../README.md).

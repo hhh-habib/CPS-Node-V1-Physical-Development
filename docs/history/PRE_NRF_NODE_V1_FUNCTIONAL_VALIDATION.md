@@ -1,3 +1,13 @@
+# HISTORICAL — PRE-nRF / SG90 + HC-SR04 REVISION
+
+**This report applies only to the retired pre-nRF directional-head prototype. It is not current Stage 5A validation or evidence of current nRF performance.**
+
+The original report below is preserved. Its present-tense statements, PASS results, distance/duration observations and paper-oriented interpretations refer to that historical revision only. The original test-session date is not established here; this move does not date those tests to 2026-10-02.
+
+The observations are the project owner's historical functional report, not Codex hardware measurements. No historical command/range observation is promoted into a current performance claim. Current evidence is [Stage 5A physical validation](../STAGE5A_PHYSICAL_VALIDATION.md); current wiring is [hardware architecture](../HARDWARE_ARCHITECTURE.md).
+
+---
+
 # Node V1 Functional Validation Test Report
 
 ## 1. Purpose
